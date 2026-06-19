@@ -31,12 +31,12 @@ export const initialAnnotations: Annotation[] = [
 ];
 
 export const quickAnnotations: QuickAnnotation[] = [
-  { id: 'qa-1', label: '同意发布声明', category: 'approval' },
-  { id: 'qa-2', label: '请法务复核', category: 'review' },
-  { id: 'qa-3', label: '由分行先沟通', category: 'delegation' },
-  { id: 'qa-4', label: '先内部核实', category: 'delegation' },
+  { id: 'qa-1', label: '同意发布声明', category: 'approval', generatesTodo: true, defaultOwner: '品牌公关部' },
+  { id: 'qa-2', label: '请法务复核', category: 'review', generatesTodo: true, defaultOwner: '法务部' },
+  { id: 'qa-3', label: '由分行先沟通', category: 'delegation', generatesTodo: true, defaultOwner: '属地分行' },
+  { id: 'qa-4', label: '先内部核实', category: 'delegation', generatesTodo: true, defaultOwner: '内审部' },
   { id: 'qa-5', label: '建议谨慎处理', category: 'other' },
-  { id: 'qa-6', label: '纳入本周督办', category: 'other' },
-  { id: 'qa-7', label: '持续监测舆情', category: 'other' },
-  { id: 'qa-8', label: '同意整改方案', category: 'approval' },
+  { id: 'qa-6', label: '纳入本周督办', category: 'other', generatesTodo: true, defaultOwner: '办公室' },
+  { id: 'qa-7', label: '持续监测舆情', category: 'other', generatesTodo: true, defaultOwner: '品牌公关部' },
+  { id: 'qa-8', label: '同意整改方案', category: 'approval', generatesTodo: true, defaultOwner: '业务部门' },
 ];

@@ -69,6 +69,33 @@ export interface QuickAnnotation {
   id: string;
   label: string;
   category: AnnotationCategory;
+  generatesTodo?: boolean;
+  defaultOwner?: string;
+}
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface TodoItem {
+  id: string;
+  eventId: string;
+  eventTitle: string;
+  content: string;
+  owner: string;
+  ownerRole: string;
+  status: TodoStatus;
+  createdAt: string;
+  sourceAnnotationId?: string;
+  category: AnnotationCategory;
+}
+
+export type MeetingStep = 'overview' | 'scenario' | 'annotations';
+
+export interface MeetingState {
+  isActive: boolean;
+  selectedEventIds: string[];
+  currentEventIndex: number;
+  currentStep: MeetingStep;
+  startTime?: string;
 }
 
 export interface MeetingMinutes {
@@ -77,4 +104,5 @@ export interface MeetingMinutes {
   annotations: Annotation[];
   events: RiskEvent[];
   decisions: string[];
+  todos: TodoItem[];
 }

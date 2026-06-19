@@ -1,24 +1,36 @@
-import { Annotation, RiskEvent } from '@/types';
+import { Annotation, RiskEvent, TodoItem } from '@/types';
 import { formatDateCN } from './formatters';
 
 export interface ExportOptions {
   format: 'txt' | 'html';
   attendees: string[];
+  isMeetingExport?: boolean;
+  meetingStartTime?: string;
 }
+
+const statusMap: Record<string, string> = {
+  pending: '待处理',
+  in_progress: '处理中',
+  completed: '已完成',
+};
 
 export function generateMinutesText(
   events: RiskEvent[],
   annotations: Annotation[],
+  todos: TodoItem[],
   options: ExportOptions
 ): string {
   const dateStr = formatDateCN();
   const lines: string[] = [];
 
-  lines.push('='.repeat(50));
-  lines.push('        声誉风险管理晨会会议纪要');
-  lines.push('='.repeat(50));
+  lines.push('='.repeat(60));
+  lines.push('              声誉风险管理晨会会议纪要');
+  lines.push('='.repeat(60));
   lines.push('');
   lines.push(`会议时间：${dateStr}`);
+  if (options.meetingStartTime) {
+    lines.push(`开始时间：${options.meetingStartTime}`);
+  }
   lines.push(`参会人员：${options.attendees.join('、')}`);
   lines.push('');
 
@@ -26,51 +38,71 @@ export function generateMinutesText(
     annotations.some((a) => a.eventId === e.id)
   );
 
-  if (eventsWithAnnotations.length === 0) {
+  if (eventsWithAnnotations.length === 0 && todos.length === 0) {
     lines.push('本次会议无决策事项。');
     return lines.join('\n');
   }
 
-  lines.push('─'.repeat(50));
-  lines.push('一、讨论事项及决策');
-  lines.push('─'.repeat(50));
+  lines.push('─'.repeat(60));
+  lines.push('一、上会议题');
+  lines.push('─'.repeat(60));
   lines.push('');
 
-  eventsWithAnnotations.forEach((event, index) => {
+  events.forEach((event, index) => {
     const eventAnnotations = annotations.filter((a) => a.eventId === event.id);
     lines.push(`${index + 1}. ${event.title}`);
+    lines.push(`   风险等级：${event.level === 'critical' ? '紧急' : event.level === 'warning' ? '待决策' : '已降温'}`);
     lines.push(`   事件概况：${event.summary}`);
     lines.push('');
-    lines.push('   决策意见：');
-    eventAnnotations.forEach((a, i) => {
-      lines.push(`     [${a.timestamp}] ${a.author}（${a.role}）：${a.content}`);
-    });
+    if (eventAnnotations.length > 0) {
+      lines.push('   讨论及决策意见：');
+      eventAnnotations.forEach((a) => {
+        lines.push(`     [${a.timestamp}] ${a.author}（${a.role}）：${a.content}`);
+      });
+    } else {
+      lines.push('   （本次会议未讨论）');
+    }
     lines.push('');
   });
 
-  lines.push('─'.repeat(50));
-  lines.push('二、待办事项');
-  lines.push('─'.repeat(50));
-  lines.push('');
+  if (todos.length > 0) {
+    lines.push('─'.repeat(60));
+    lines.push('二、待办事项清单');
+    lines.push('─'.repeat(60));
+    lines.push('');
+    lines.push('┌────┬────────────────────┬──────────┬────────┬──────────┐');
+    lines.push('│序号│      事项内容      │  负责人  │  状态  │  创建时间  │');
+    lines.push('├────┼────────────────────┼──────────┼────────┼──────────┤');
 
-  let todoIndex = 1;
-  eventsWithAnnotations.forEach((event) => {
-    if (event.pendingItems) {
-      event.pendingItems.forEach((item) => {
-        lines.push(`${todoIndex}. [${event.title}] ${item}`);
-        todoIndex++;
-      });
-    }
-  });
+    todos.forEach((todo, idx) => {
+      const contentShort = todo.content.length > 18 ? todo.content.slice(0, 18) + '...' : todo.content.padEnd(18);
+      const ownerShort = todo.owner.length > 6 ? todo.owner.slice(0, 6) + '..' : todo.owner.padStart(4).padEnd(6);
+      const status = statusMap[todo.status].padStart(2).padEnd(4);
+      lines.push(`│ ${String(idx + 1).padEnd(2)} │ ${contentShort} │ ${ownerShort} │ ${status} │   ${todo.createdAt}   │`);
+    });
 
-  if (todoIndex === 1) {
-    lines.push('暂无待办事项。');
+    lines.push('└────┴────────────────────┴──────────┴────────┴──────────┘');
+    lines.push('');
+
+    const groupedByOwner: Record<string, TodoItem[]> = {};
+    todos.forEach((t) => {
+      if (!groupedByOwner[t.owner]) groupedByOwner[t.owner] = [];
+      groupedByOwner[t.owner].push(t);
+    });
+
+    lines.push('按负责人汇总：');
+    Object.entries(groupedByOwner).forEach(([owner, items]) => {
+      const pending = items.filter((i) => i.status === 'pending').length;
+      const inProgress = items.filter((i) => i.status === 'in_progress').length;
+      const completed = items.filter((i) => i.status === 'completed').length;
+      lines.push(`  ${owner}：共${items.length}项（待办${pending}，进行中${inProgress}，已完成${completed}）`);
+    });
   }
 
   lines.push('');
-  lines.push('='.repeat(50));
+  lines.push('='.repeat(60));
   lines.push(`纪要生成时间：${new Date().toLocaleString('zh-CN')}`);
-  lines.push('='.repeat(50));
+  lines.push('='.repeat(60));
 
   return lines.join('\n');
 }
@@ -78,15 +110,17 @@ export function generateMinutesText(
 export function exportMinutes(
   events: RiskEvent[],
   annotations: Annotation[],
+  todos: TodoItem[],
   options: ExportOptions
 ) {
-  const content = generateMinutesText(events, annotations, options);
+  const content = generateMinutesText(events, annotations, todos, options);
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const dateStr = new Date().toISOString().slice(0, 10);
+  const prefix = options.isMeetingExport ? '会议纪要' : '声誉风险晨会纪要';
   a.href = url;
-  a.download = `声誉风险晨会纪要_${dateStr}.txt`;
+  a.download = `${prefix}_${dateStr}.txt`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
