@@ -10,6 +10,8 @@ import {
   Users,
   ListTodo,
   Filter,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import AppHeader from '@/components/layout/AppHeader';
 import EventSidebar from '@/components/annotations/EventSidebar';
@@ -48,13 +50,24 @@ export default function AnnotationsPage() {
   const setMeetingStep = useAppStore((s) => s.setMeetingStep);
 
   const displayEvents = meeting.isActive ? getMeetingEvents() : events;
+  const displayTodos = meeting.isActive ? getMeetingTodos() : todos;
+
   const [selectedEventId, setSelectedEventId] = useState<string>(
     meeting.isActive && meeting.selectedEventIds.length > 0
       ? meeting.selectedEventIds[meeting.currentEventIndex]
       : events[0]?.id || ''
   );
   const [selectedAuthor, setSelectedAuthor] = useState<string>('all');
+  const [selectedTodoOwner, setSelectedTodoOwner] = useState<string>('all');
+  const [selectedTodoStatus, setSelectedTodoStatus] = useState<TodoStatus | 'all'>('all');
+  const [selectedTodoIdsForExport, setSelectedTodoIdsForExport] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('annotations');
+
+  const allOwners = useMemo(() => {
+    const owners = new Set<string>();
+    displayTodos.forEach((t) => owners.add(t.owner));
+    return Array.from(owners);
+  }, [displayTodos]);
 
   useEffect(() => {
     if (meeting.isActive && meeting.selectedEventIds.length > 0) {
@@ -76,10 +89,31 @@ export default function AnnotationsPage() {
 
   const eventTodos = useMemo(() => {
     if (!selectedEventId) return [];
-    return getTodosByEventId(selectedEventId);
-  }, [selectedEventId, todos]);
+    let result = getTodosByEventId(selectedEventId);
+    if (selectedTodoOwner !== 'all') {
+      result = result.filter((t) => t.owner === selectedTodoOwner);
+    }
+    if (selectedTodoStatus !== 'all') {
+      result = result.filter((t) => t.status === selectedTodoStatus);
+    }
+    return result;
+  }, [selectedEventId, todos, selectedTodoOwner, selectedTodoStatus]);
 
   const allRelevantTodos = meeting.isActive ? getMeetingTodos() : todos;
+
+  const handleToggleTodoSelect = (todoId: string) => {
+    setSelectedTodoIdsForExport((prev) =>
+      prev.includes(todoId) ? prev.filter((id) => id !== todoId) : [...prev, todoId]
+    );
+  };
+
+  const handleSelectAllTodos = () => {
+    if (selectedTodoIdsForExport.length === eventTodos.length) {
+      setSelectedTodoIdsForExport([]);
+    } else {
+      setSelectedTodoIdsForExport(eventTodos.map((t) => t.id));
+    }
+  };
 
   const annotationCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -107,7 +141,11 @@ export default function AnnotationsPage() {
   const handleExport = () => {
     const exportEvents = meeting.isActive ? getMeetingEvents() : events;
     const exportAnnotations = meeting.isActive ? getMeetingAnnotations() : annotations;
-    const exportTodos = meeting.isActive ? getMeetingTodos() : todos;
+    const allTodos = meeting.isActive ? getMeetingTodos() : todos;
+    const exportTodos =
+      selectedTodoIdsForExport.length > 0
+        ? allTodos.filter((t) => selectedTodoIdsForExport.includes(t.id))
+        : allTodos;
 
     exportMinutes(exportEvents, exportAnnotations, exportTodos, {
       format: 'txt',
@@ -296,10 +334,113 @@ export default function AnnotationsPage() {
               ) : (
                 <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/50">
                   <div className="max-w-2xl mx-auto">
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+                      <div className="flex items-center justify-between gap-4 mb-3">
+                        <div className="flex items-center gap-1.5">
+                          <Filter className="w-3.5 h-3.5 text-slate-500" />
+                          <span className="text-xs text-slate-500 font-medium">待办筛选</span>
+                        </div>
+                        {eventTodos.length > 0 && (
+                          <button
+                            onClick={handleSelectAllTodos}
+                            className="flex items-center gap-1.5 text-xs text-navy-700 hover:text-navy-900 transition-colors"
+                          >
+                            {selectedTodoIdsForExport.length === eventTodos.length ? (
+                              <CheckSquare className="w-3.5 h-3.5 fill-brand-gold/10 text-brand-gold" />
+                            ) : (
+                              <Square className="w-3.5 h-3.5" />
+                            )}
+                            {selectedTodoIdsForExport.length === eventTodos.length ? '取消全选' : '全选'}
+                            {selectedTodoIdsForExport.length > 0 && (
+                              <span className="text-brand-gold font-medium">
+                                ({selectedTodoIdsForExport.length}项已选)
+                              </span>
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[10px] text-slate-400 mb-1.5">按负责人</div>
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              onClick={() => setSelectedTodoOwner('all')}
+                              className={`px-2 py-1 text-[10px] rounded-md transition-colors ${
+                                selectedTodoOwner === 'all'
+                                  ? 'bg-navy-900 text-white'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              全部
+                            </button>
+                            {allOwners.map((owner) => (
+                              <button
+                                key={owner}
+                                onClick={() => setSelectedTodoOwner(owner)}
+                                className={`px-2 py-1 text-[10px] rounded-md transition-colors ${
+                                  selectedTodoOwner === owner
+                                    ? 'bg-navy-900 text-white'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                              >
+                                {owner}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-400 mb-1.5">按状态</div>
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              onClick={() => setSelectedTodoStatus('all')}
+                              className={`px-2 py-1 text-[10px] rounded-md transition-colors ${
+                                selectedTodoStatus === 'all'
+                                  ? 'bg-navy-900 text-white'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              全部
+                            </button>
+                            {(['pending', 'in_progress', 'completed'] as TodoStatus[]).map((status) => (
+                              <button
+                                key={status}
+                                onClick={() => setSelectedTodoStatus(status)}
+                                className={`px-2 py-1 text-[10px] rounded-md transition-colors ${
+                                  selectedTodoStatus === status
+                                    ? 'bg-navy-900 text-white'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                              >
+                                {status === 'pending' ? '待处理' : status === 'in_progress' ? '处理中' : '已完成'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <TodoPanel
                       todos={eventTodos}
                       onStatusChange={handleTodoStatusChange}
+                      selectable={eventTodos.length > 0}
+                      selectedTodoIds={selectedTodoIdsForExport}
+                      onToggleSelect={handleToggleTodoSelect}
                     />
+
+                    {selectedTodoIdsForExport.length > 0 && (
+                      <div className="mt-4 flex items-center justify-between bg-brand-gold/10 border border-brand-gold/30 rounded-xl p-3">
+                        <div className="text-sm text-navy-800">
+                          已选择 <span className="font-semibold text-brand-gold">{selectedTodoIdsForExport.length}</span> 项待办将包含在纪要中
+                        </div>
+                        <button
+                          onClick={handleExport}
+                          className="px-4 py-2 rounded-lg bg-brand-gold text-navy-950 text-sm font-medium hover:bg-brand-gold/90 transition-colors"
+                        >
+                          导出选中待办
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

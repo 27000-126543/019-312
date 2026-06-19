@@ -95,6 +95,7 @@ export interface MeetingState {
   selectedEventIds: string[];
   currentEventIndex: number;
   currentStep: MeetingStep;
+  discussedEventIds: string[];
   startTime?: string;
 }
 

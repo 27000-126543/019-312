@@ -83,7 +83,8 @@ interface AppState {
   nextMeetingStep: () => void;
   prevMeetingEvent: () => void;
   nextMeetingEvent: () => void;
-  setCurrentMeetingEventIndex: (index: number) => void;
+  setCurrentMeetingEventIndex: (index: number, step?: MeetingStep) => void;
+  markEventDiscussed: (eventId: string) => void;
 
   getMeetingEvents: () => RiskEvent[];
   getCurrentMeetingEvent: () => RiskEvent | null;
@@ -104,6 +105,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     selectedEventIds: [],
     currentEventIndex: 0,
     currentStep: 'overview',
+    discussedEventIds: [],
   },
   detailModalEventId: null,
 
@@ -235,6 +237,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         isActive: true,
         currentEventIndex: 0,
         currentStep: 'overview',
+        discussedEventIds: [],
         startTime,
       },
     }));
@@ -270,11 +273,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       });
     } else if (state.meeting.currentEventIndex < state.meeting.selectedEventIds.length - 1) {
+      const currentEventId = state.meeting.selectedEventIds[state.meeting.currentEventIndex];
+      const nextIndex = state.meeting.currentEventIndex + 1;
       set({
         meeting: {
           ...state.meeting,
-          currentEventIndex: state.meeting.currentEventIndex + 1,
+          currentEventIndex: nextIndex,
           currentStep: 'overview',
+          discussedEventIds: state.meeting.discussedEventIds.includes(currentEventId)
+            ? state.meeting.discussedEventIds
+            : [...state.meeting.discussedEventIds, currentEventId],
         },
       });
       get().resetScenarioState();
@@ -288,7 +296,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         meeting: {
           ...state.meeting,
           currentEventIndex: state.meeting.currentEventIndex - 1,
-          currentStep: 'overview',
         },
       });
       get().resetScenarioState();
@@ -302,22 +309,33 @@ export const useAppStore = create<AppState>((set, get) => ({
         meeting: {
           ...state.meeting,
           currentEventIndex: state.meeting.currentEventIndex + 1,
-          currentStep: 'overview',
         },
       });
       get().resetScenarioState();
     }
   },
 
-  setCurrentMeetingEventIndex: (index) => {
+  setCurrentMeetingEventIndex: (index, step) => {
     set((state) => ({
       meeting: {
         ...state.meeting,
         currentEventIndex: index,
-        currentStep: 'overview',
+        currentStep: step || state.meeting.currentStep,
       },
     }));
     get().resetScenarioState();
+  },
+
+  markEventDiscussed: (eventId) => {
+    set((state) => {
+      if (state.meeting.discussedEventIds.includes(eventId)) return {};
+      return {
+        meeting: {
+          ...state.meeting,
+          discussedEventIds: [...state.meeting.discussedEventIds, eventId],
+        },
+      };
+    });
   },
 
   getMeetingEvents: () => {

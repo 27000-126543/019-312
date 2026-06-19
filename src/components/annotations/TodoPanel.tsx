@@ -1,10 +1,13 @@
-import { Clock, CheckCircle2, PlayCircle } from 'lucide-react';
+import { Clock, CheckCircle2, PlayCircle, CheckSquare, Square } from 'lucide-react';
 import { TodoItem, TodoStatus } from '@/types';
 import { getCategoryInfo, getAvatarColor, getInitials } from '@/utils/formatters';
 
 interface TodoPanelProps {
   todos: TodoItem[];
   onStatusChange: (todoId: string, status: TodoStatus) => void;
+  selectable?: boolean;
+  selectedTodoIds?: string[];
+  onToggleSelect?: (todoId: string) => void;
 }
 
 const statusConfig: Record<TodoStatus, { label: string; icon: typeof Clock; color: string; bgColor: string }> = {
@@ -28,7 +31,13 @@ const statusConfig: Record<TodoStatus, { label: string; icon: typeof Clock; colo
   },
 };
 
-export default function TodoPanel({ todos, onStatusChange }: TodoPanelProps) {
+export default function TodoPanel({
+  todos,
+  onStatusChange,
+  selectable = false,
+  selectedTodoIds = [],
+  onToggleSelect,
+}: TodoPanelProps) {
   const groupedByStatus: Record<TodoStatus, TodoItem[]> = {
     pending: todos.filter((t) => t.status === 'pending'),
     in_progress: todos.filter((t) => t.status === 'in_progress'),
@@ -70,13 +79,28 @@ export default function TodoPanel({ todos, onStatusChange }: TodoPanelProps) {
                 const catInfo = getCategoryInfo(todo.category);
                 const avatarColor = getAvatarColor(todo.owner);
                 const initials = getInitials(todo.owner);
+                const isSelected = selectedTodoIds.includes(todo.id);
 
                 return (
                   <div
                     key={todo.id}
-                    className="bg-white rounded-xl border border-slate-200 p-3 hover:shadow-sm transition-shadow"
+                    className={`bg-white rounded-xl border p-3 hover:shadow-sm transition-all ${
+                      isSelected ? 'border-brand-gold ring-2 ring-brand-gold/20' : 'border-slate-200'
+                    }`}
                   >
                     <div className="flex items-start gap-3">
+                      {selectable && (
+                        <button
+                          onClick={() => onToggleSelect?.(todo.id)}
+                          className="w-5 h-5 mt-0.5 flex-shrink-0 text-brand-gold hover:opacity-80 transition-opacity"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-5 h-5 fill-brand-gold/10" />
+                          ) : (
+                            <Square className="w-5 h-5 text-slate-300" />
+                          )}
+                        </button>
+                      )}
                       <div
                         className={`w-8 h-8 rounded-full ${avatarColor} text-white flex items-center justify-center text-xs font-medium flex-shrink-0`}
                       >

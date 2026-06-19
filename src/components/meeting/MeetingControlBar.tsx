@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -8,10 +8,12 @@ import {
   MessageSquare,
   FileDown,
   CheckCircle2,
+  CalendarClock,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { MeetingStep } from '@/types';
 import { exportMinutes } from '@/utils/exportMinutes';
+import MeetingAgendaPanel from './MeetingAgendaPanel';
 
 const attendees = ['张行长', '王行长', '李总', '赵总', '刘总', '陈总'];
 
@@ -24,6 +26,7 @@ const steps: { key: MeetingStep; label: string; icon: typeof LayoutDashboard }[]
 export default function MeetingControlBar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [showAgenda, setShowAgenda] = useState(false);
   const meeting = useAppStore((s) => s.meeting);
   const endMeeting = useAppStore((s) => s.endMeeting);
   const setMeetingStep = useAppStore((s) => s.setMeetingStep);
@@ -90,24 +93,22 @@ export default function MeetingControlBar() {
   const handlePrevEvent = () => {
     if (meeting.currentEventIndex === 0) return;
     const prevIndex = meeting.currentEventIndex - 1;
-    setCurrentMeetingEventIndex(prevIndex);
-    setMeetingStep('overview');
     const events = getMeetingEvents();
     const prevEvent = events[prevIndex];
     if (prevEvent) {
-      navigateToStep('overview', prevEvent.id);
+      setCurrentMeetingEventIndex(prevIndex, meeting.currentStep);
+      navigateToStep(meeting.currentStep, prevEvent.id);
     }
   };
 
   const handleNextEvent = () => {
     if (isLastEvent) return;
     const nextIndex = meeting.currentEventIndex + 1;
-    setCurrentMeetingEventIndex(nextIndex);
-    setMeetingStep('overview');
     const events = getMeetingEvents();
     const nextEvent = events[nextIndex];
     if (nextEvent) {
-      navigateToStep('overview', nextEvent.id);
+      setCurrentMeetingEventIndex(nextIndex, meeting.currentStep);
+      navigateToStep(meeting.currentStep, nextEvent.id);
     }
   };
 
@@ -124,9 +125,12 @@ export default function MeetingControlBar() {
   };
 
   const handleEndMeeting = () => {
-    handleExport();
-    endMeeting();
-    navigate('/');
+    const currentEventId = meeting.selectedEventIds[meeting.currentEventIndex];
+    if (currentEventId && !meeting.discussedEventIds.includes(currentEventId)) {
+      const state = useAppStore.getState();
+      state.markEventDiscussed(currentEventId);
+    }
+    navigate('/meeting-review');
   };
 
   useEffect(() => {
@@ -189,6 +193,20 @@ export default function MeetingControlBar() {
 
         <div className="w-px h-6 bg-white/20 mx-1" />
 
+        <button
+          onClick={() => setShowAgenda(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm text-navy-200 hover:bg-white/10 transition-colors"
+          title="会议议程"
+        >
+          <CalendarClock className="w-4 h-4" />
+          议程
+          <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md">
+            {meeting.discussedEventIds.length}/{totalEvents}
+          </span>
+        </button>
+
+        <div className="w-px h-6 bg-white/20 mx-1" />
+
         <div className="flex items-center gap-1">
           <button
             onClick={handlePrevEvent}
@@ -235,6 +253,8 @@ export default function MeetingControlBar() {
           </button>
         </div>
       </div>
+
+      {showAgenda && <MeetingAgendaPanel onClose={() => setShowAgenda(false)} />}
     </div>
   );
 }
