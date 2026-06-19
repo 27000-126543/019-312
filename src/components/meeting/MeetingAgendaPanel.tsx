@@ -41,6 +41,10 @@ export default function MeetingAgendaPanel({ onClose }: MeetingAgendaPanelProps)
     if (meeting.discussedEventIds.includes(event.id)) {
       return { currentStep: 'annotations', isCompleted: true };
     }
+    const storedStep = meeting.eventProgress[event.id]?.step;
+    if (storedStep) {
+      return { currentStep: storedStep, isCompleted: false };
+    }
     if (index === meeting.currentEventIndex) {
       return { currentStep: meeting.currentStep, isCompleted: false };
     }
@@ -61,7 +65,6 @@ export default function MeetingAgendaPanel({ onClose }: MeetingAgendaPanelProps)
   const handleJumpToEvent = (event: RiskEvent, index: number) => {
     const progress = getEventProgress(event, index);
     setCurrentMeetingEventIndex(index, progress.currentStep);
-    setMeetingStep(progress.currentStep);
     navigateToStep(progress.currentStep, event.id);
     onClose();
   };

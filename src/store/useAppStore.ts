@@ -8,6 +8,7 @@ import {
   MeetingState,
   MeetingStep,
   AnnotationCategory,
+  EventProgress,
 } from '@/types';
 import { mockEvents } from '@/data/mockEvents';
 import { initialAnnotations } from '@/data/mockAnnotations';
@@ -85,6 +86,11 @@ interface AppState {
   nextMeetingEvent: () => void;
   setCurrentMeetingEventIndex: (index: number, step?: MeetingStep) => void;
   markEventDiscussed: (eventId: string) => void;
+  setEventProgress: (eventId: string, step: MeetingStep) => void;
+  getEventProgress: (eventId: string) => MeetingStep;
+  setUndiscussedReason: (eventId: string, reason: string) => void;
+  updateTodoOwner: (todoId: string, owner: string, ownerRole: string) => void;
+  batchUpdateTodos: (todoIds: string[], updates: Partial<Pick<TodoItem, 'owner' | 'ownerRole' | 'status'>>) => void;
 
   getMeetingEvents: () => RiskEvent[];
   getCurrentMeetingEvent: () => RiskEvent | null;
@@ -105,7 +111,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     selectedEventIds: [],
     currentEventIndex: 0,
     currentStep: 'overview',
+    eventProgress: {},
     discussedEventIds: [],
+    undiscussedReasons: {},
   },
   detailModalEventId: null,
 
@@ -231,16 +239,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   startMeeting: () => {
     const now = new Date();
     const startTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    set((state) => ({
-      meeting: {
-        ...state.meeting,
-        isActive: true,
-        currentEventIndex: 0,
-        currentStep: 'overview',
-        discussedEventIds: [],
-        startTime,
-      },
-    }));
+    set((state) => {
+      const eventProgress: Record<string, EventProgress> = {};
+      state.meeting.selectedEventIds.forEach((id) => {
+        eventProgress[id] = { step: 'overview', lastVisitedAt: startTime };
+      });
+      return {
+        meeting: {
+          ...state.meeting,
+          isActive: true,
+          currentEventIndex: 0,
+          currentStep: 'overview',
+          eventProgress,
+          discussedEventIds: [],
+          undiscussedReasons: {},
+          startTime,
+        },
+      };
+    });
   },
 
   endMeeting: () => {
@@ -253,33 +269,67 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setMeetingStep: (step) => {
-    set((state) => ({
-      meeting: {
-        ...state.meeting,
-        currentStep: step,
-      },
-    }));
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    set((state) => {
+      const currentEventId = state.meeting.selectedEventIds[state.meeting.currentEventIndex];
+      if (!currentEventId) {
+        return {
+          meeting: {
+            ...state.meeting,
+            currentStep: step,
+          },
+        };
+      }
+      return {
+        meeting: {
+          ...state.meeting,
+          currentStep: step,
+          eventProgress: {
+            ...state.meeting.eventProgress,
+            [currentEventId]: {
+              step,
+              lastVisitedAt: timestamp,
+            },
+          },
+        },
+      };
+    });
   },
 
   nextMeetingStep: () => {
     const state = get();
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const steps: MeetingStep[] = ['overview', 'scenario', 'annotations'];
     const currentIdx = steps.indexOf(state.meeting.currentStep);
+    const currentEventId = state.meeting.selectedEventIds[state.meeting.currentEventIndex];
+
     if (currentIdx < steps.length - 1) {
+      const nextStep = steps[currentIdx + 1];
       set({
         meeting: {
           ...state.meeting,
-          currentStep: steps[currentIdx + 1],
+          currentStep: nextStep,
+          eventProgress: {
+            ...state.meeting.eventProgress,
+            [currentEventId]: { step: nextStep, lastVisitedAt: timestamp },
+          },
         },
       });
     } else if (state.meeting.currentEventIndex < state.meeting.selectedEventIds.length - 1) {
-      const currentEventId = state.meeting.selectedEventIds[state.meeting.currentEventIndex];
       const nextIndex = state.meeting.currentEventIndex + 1;
+      const nextEventId = state.meeting.selectedEventIds[nextIndex];
+      const nextStep = state.meeting.eventProgress[nextEventId]?.step || 'overview';
       set({
         meeting: {
           ...state.meeting,
           currentEventIndex: nextIndex,
-          currentStep: 'overview',
+          currentStep: nextStep,
+          eventProgress: {
+            ...state.meeting.eventProgress,
+            [nextEventId]: { step: nextStep, lastVisitedAt: timestamp },
+          },
           discussedEventIds: state.meeting.discussedEventIds.includes(currentEventId)
             ? state.meeting.discussedEventIds
             : [...state.meeting.discussedEventIds, currentEventId],
@@ -291,11 +341,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   prevMeetingEvent: () => {
     const state = get();
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     if (state.meeting.currentEventIndex > 0) {
+      const prevIndex = state.meeting.currentEventIndex - 1;
+      const prevEventId = state.meeting.selectedEventIds[prevIndex];
+      const prevStep = state.meeting.eventProgress[prevEventId]?.step || 'overview';
       set({
         meeting: {
           ...state.meeting,
-          currentEventIndex: state.meeting.currentEventIndex - 1,
+          currentEventIndex: prevIndex,
+          currentStep: prevStep,
+          eventProgress: {
+            ...state.meeting.eventProgress,
+            [prevEventId]: { step: prevStep, lastVisitedAt: timestamp },
+          },
         },
       });
       get().resetScenarioState();
@@ -304,11 +364,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   nextMeetingEvent: () => {
     const state = get();
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     if (state.meeting.currentEventIndex < state.meeting.selectedEventIds.length - 1) {
+      const nextIndex = state.meeting.currentEventIndex + 1;
+      const nextEventId = state.meeting.selectedEventIds[nextIndex];
+      const nextStep = state.meeting.eventProgress[nextEventId]?.step || 'overview';
       set({
         meeting: {
           ...state.meeting,
-          currentEventIndex: state.meeting.currentEventIndex + 1,
+          currentEventIndex: nextIndex,
+          currentStep: nextStep,
+          eventProgress: {
+            ...state.meeting.eventProgress,
+            [nextEventId]: { step: nextStep, lastVisitedAt: timestamp },
+          },
         },
       });
       get().resetScenarioState();
@@ -316,13 +386,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setCurrentMeetingEventIndex: (index, step) => {
-    set((state) => ({
-      meeting: {
-        ...state.meeting,
-        currentEventIndex: index,
-        currentStep: step || state.meeting.currentStep,
-      },
-    }));
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    set((state) => {
+      const eventId = state.meeting.selectedEventIds[index];
+      const resolvedStep = step || state.meeting.eventProgress[eventId]?.step || state.meeting.currentStep;
+      return {
+        meeting: {
+          ...state.meeting,
+          currentEventIndex: index,
+          currentStep: resolvedStep,
+          eventProgress: {
+            ...state.meeting.eventProgress,
+            [eventId]: { step: resolvedStep, lastVisitedAt: timestamp },
+          },
+        },
+      };
+    });
     get().resetScenarioState();
   },
 
@@ -336,6 +416,53 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       };
     });
+  },
+
+  setEventProgress: (eventId, step) => {
+    const now = new Date();
+    const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    set((state) => ({
+      meeting: {
+        ...state.meeting,
+        eventProgress: {
+          ...state.meeting.eventProgress,
+          [eventId]: { step, lastVisitedAt: timestamp },
+        },
+      },
+    }));
+  },
+
+  getEventProgress: (eventId) => {
+    const state = get();
+    return state.meeting.eventProgress[eventId]?.step || 'overview';
+  },
+
+  setUndiscussedReason: (eventId, reason) => {
+    set((state) => ({
+      meeting: {
+        ...state.meeting,
+        undiscussedReasons: {
+          ...state.meeting.undiscussedReasons,
+          [eventId]: reason,
+        },
+      },
+    }));
+  },
+
+  updateTodoOwner: (todoId, owner, ownerRole) => {
+    set((state) => ({
+      todos: state.todos.map((t) =>
+        t.id === todoId ? { ...t, owner, ownerRole } : t
+      ),
+    }));
+  },
+
+  batchUpdateTodos: (todoIds, updates) => {
+    set((state) => ({
+      todos: state.todos.map((t) =>
+        todoIds.includes(t.id) ? { ...t, ...updates } : t
+      ),
+    }));
   },
 
   getMeetingEvents: () => {

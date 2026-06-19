@@ -17,9 +17,16 @@ import AppHeader from '@/components/layout/AppHeader';
 import { useAppStore } from '@/store/useAppStore';
 import { getRiskLevelInfo } from '@/utils/formatters';
 import { exportMinutes } from '@/utils/exportMinutes';
-import { TodoStatus } from '@/types';
+import { TodoStatus, MeetingStep, RiskEvent } from '@/types';
 
 const attendees = ['张行长', '王行长', '李总', '赵总', '刘总', '陈总'];
+const commonOwners = ['品牌公关部', '法务部', '数字银行部', '属地分行', '内审部', '业务部门', '办公室'];
+
+const stepLabels: Record<MeetingStep, string> = {
+  overview: '总览',
+  scenario: '推演',
+  annotations: '批注',
+};
 
 export default function MeetingReviewPage() {
   const navigate = useNavigate();
@@ -28,8 +35,23 @@ export default function MeetingReviewPage() {
   const getMeetingEvents = useAppStore((s) => s.getMeetingEvents);
   const getMeetingAnnotations = useAppStore((s) => s.getMeetingAnnotations);
   const getMeetingTodos = useAppStore((s) => s.getMeetingTodos);
+  const setCurrentMeetingEventIndex = useAppStore((s) => s.setCurrentMeetingEventIndex);
+  const getEventProgress = useAppStore((s) => s.getEventProgress);
+  const setUndiscussedReason = useAppStore((s) => s.setUndiscussedReason);
+  const batchUpdateTodos = useAppStore((s) => s.batchUpdateTodos);
 
   const [selectedTodoIds, setSelectedTodoIds] = useState<string[]>([]);
+  const [batchAction, setBatchAction] = useState<'none' | 'owner' | 'status'>('none');
+  const [editingReasonId, setEditingReasonId] = useState<string | null>(null);
+
+  const navigateToEvent = (event: RiskEvent) => {
+    const eventIndex = meeting.selectedEventIds.indexOf(event.id);
+    const step = getEventProgress(event.id);
+    setCurrentMeetingEventIndex(eventIndex, step);
+    if (step === 'overview') navigate('/');
+    else if (step === 'scenario') navigate(`/scenario/${event.id}`);
+    else if (step === 'annotations') navigate('/annotations');
+  };
 
   const events = getMeetingEvents();
   const annotations = getMeetingAnnotations();
@@ -68,6 +90,18 @@ export default function MeetingReviewPage() {
     }
   };
 
+  const handleBatchOwnerChange = (owner: string) => {
+    if (selectedTodoIds.length === 0) return;
+    batchUpdateTodos(selectedTodoIds, { owner, ownerRole: owner });
+    setBatchAction('none');
+  };
+
+  const handleBatchStatusChange = (status: TodoStatus) => {
+    if (selectedTodoIds.length === 0) return;
+    batchUpdateTodos(selectedTodoIds, { status });
+    setBatchAction('none');
+  };
+
   const handleExport = () => {
     const exportTodos = selectedTodoIds.length > 0
       ? todos.filter((t) => selectedTodoIds.includes(t.id))
@@ -76,7 +110,11 @@ export default function MeetingReviewPage() {
       format: 'txt',
       attendees,
       isMeetingExport: true,
+      isPostMeeting: true,
       meetingStartTime: meeting.startTime,
+      eventProgress: meeting.eventProgress,
+      discussedEventIds: meeting.discussedEventIds,
+      undiscussedReasons: meeting.undiscussedReasons,
     });
   };
 
@@ -181,10 +219,12 @@ export default function MeetingReviewPage() {
                     const levelInfo = getRiskLevelInfo(event.level);
                     const eventAnnotations = annotations.filter((a) => a.eventId === event.id);
                     const eventTodos = todos.filter((t) => t.eventId === event.id);
+                    const progress = getEventProgress(event.id);
                     return (
-                      <div
+                      <button
                         key={event.id}
-                        className="p-3 rounded-xl bg-risk-safe/5 border border-risk-safe/20"
+                        onClick={() => navigateToEvent(event)}
+                        className="w-full text-left p-3 rounded-xl bg-risk-safe/5 border border-risk-safe/20 hover:bg-risk-safe/10 transition-colors"
                       >
                         <div className="flex items-start gap-3">
                           <div
@@ -199,17 +239,25 @@ export default function MeetingReviewPage() {
                               >
                                 {levelInfo.label}
                               </span>
+                              <span className="text-[10px] text-risk-safe bg-risk-safe/10 px-1.5 py-0.5 rounded">
+                                进度：{stepLabels[progress]}
+                              </span>
                             </div>
                             <h4 className="text-sm font-medium text-slate-800 leading-snug">
                               {event.title}
                             </h4>
-                            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-500">
-                              <span>{eventAnnotations.length} 条批注</span>
-                              <span>{eventTodos.length} 项待办</span>
+                            <div className="flex items-center justify-between mt-1.5">
+                              <div className="flex items-center gap-3 text-[11px] text-slate-500">
+                                <span>{eventAnnotations.length} 条批注</span>
+                                <span>{eventTodos.length} 项待办</span>
+                              </div>
+                              <span className="text-[11px] text-navy-700 flex items-center gap-0.5">
+                                继续处理 <ArrowRight className="w-3 h-3" />
+                              </span>
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     );
                   })
                 )}
@@ -233,36 +281,89 @@ export default function MeetingReviewPage() {
                 ) : (
                   undiscussedEvents.map((event) => {
                     const levelInfo = getRiskLevelInfo(event.level);
+                    const progress = getEventProgress(event.id);
+                    const reason = meeting.undiscussedReasons[event.id];
+                    const isEditing = editingReasonId === event.id;
                     return (
                       <div
                         key={event.id}
                         className="p-3 rounded-xl bg-slate-50 border border-slate-100"
                       >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-lg ${levelInfo.bgLightClass} flex items-center justify-center flex-shrink-0`}
-                          >
-                            <Clock className={`w-4 h-4 ${levelInfo.textClass}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <span
-                                className={`tag-chip text-[10px] ${levelInfo.bgLightClass} ${levelInfo.textClass}`}
-                              >
-                                {levelInfo.label}
-                              </span>
-                            </div>
-                            <h4 className="text-sm font-medium text-slate-800 leading-snug">
-                              {event.title}
-                            </h4>
-                            <button
-                              onClick={() => navigate('/')}
-                              className="mt-1.5 text-[11px] text-navy-700 flex items-center gap-0.5 hover:text-navy-900"
+                        <button
+                          onClick={() => navigateToEvent(event)}
+                          className="w-full text-left"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`w-8 h-8 rounded-lg ${levelInfo.bgLightClass} flex items-center justify-center flex-shrink-0`}
                             >
-                              返回讨论 <ArrowRight className="w-3 h-3" />
-                            </button>
+                              <Clock className={`w-4 h-4 ${levelInfo.textClass}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span
+                                  className={`tag-chip text-[10px] ${levelInfo.bgLightClass} ${levelInfo.textClass}`}
+                                >
+                                  {levelInfo.label}
+                                </span>
+                                <span className="text-[10px] text-risk-warning bg-risk-warning/10 px-1.5 py-0.5 rounded">
+                                  进度：{stepLabels[progress]}
+                                </span>
+                              </div>
+                              <h4 className="text-sm font-medium text-slate-800 leading-snug">
+                                {event.title}
+                              </h4>
+                              <div className="flex items-center justify-between mt-1.5">
+                                <span className="text-[11px] text-navy-700 flex items-center gap-0.5">
+                                  跳转到{stepLabels[progress]} <ArrowRight className="w-3 h-3" />
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        </button>
+
+                        {isEditing ? (
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <div className="text-[10px] text-slate-400 mb-1">未讨论原因备注：</div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                defaultValue={reason || ''}
+                                placeholder="如：时间不够、需进一步核实数据等"
+                                className="flex-1 px-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-gold"
+                                autoFocus
+                                onBlur={(e) => {
+                                  setUndiscussedReason(event.id, e.target.value);
+                                  setEditingReasonId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    setUndiscussedReason(event.id, (e.target as HTMLInputElement).value);
+                                    setEditingReasonId(null);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingReasonId(event.id);
+                            }}
+                            className="mt-2 w-full text-left"
+                          >
+                            {reason ? (
+                              <div className="text-[11px] text-slate-500 bg-slate-100 px-2 py-1.5 rounded">
+                                <span className="text-slate-400">未讨论原因：</span>{reason}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 hover:text-slate-600">
+                                + 添加未讨论原因备注
+                              </span>
+                            )}
+                          </button>
+                        )}
                       </div>
                     );
                   })
@@ -331,23 +432,89 @@ export default function MeetingReviewPage() {
                   </span>
                 </div>
                 {pendingTodos.length > 0 && (
-                  <button
-                    onClick={handleSelectAll}
-                    className="flex items-center gap-1.5 text-xs text-navy-700 hover:text-navy-900 transition-colors"
-                  >
-                    {selectedTodoIds.length === pendingTodos.length ? (
-                      <CheckSquare className="w-3.5 h-3.5 fill-brand-gold/10 text-brand-gold" />
-                    ) : (
-                      <Square className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2">
+                    {selectedTodoIds.length > 0 && (
+                      <>
+                        {batchAction === 'owner' ? (
+                          <select
+                            className="text-xs px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-gold"
+                            defaultValue=""
+                            onChange={(e) => {
+                              if (e.target.value) handleBatchOwnerChange(e.target.value);
+                              else setBatchAction('none');
+                            }}
+                            autoFocus
+                          >
+                            <option value="">选择新负责人...</option>
+                            {commonOwners.map((owner) => (
+                              <option key={owner} value={owner}>
+                                {owner}
+                              </option>
+                            ))}
+                          </select>
+                        ) : batchAction === 'status' ? (
+                          <select
+                            className="text-xs px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-gold"
+                            defaultValue=""
+                            onChange={(e) => {
+                              if (e.target.value) handleBatchStatusChange(e.target.value as TodoStatus);
+                              else setBatchAction('none');
+                            }}
+                            autoFocus
+                          >
+                            <option value="">选择新状态...</option>
+                            <option value="pending">待处理</option>
+                            <option value="in_progress">处理中</option>
+                            <option value="completed">已完成</option>
+                          </select>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setBatchAction('owner')}
+                              className="flex items-center gap-1 px-2 py-1 text-xs text-navy-700 bg-navy-50 rounded hover:bg-navy-100 transition-colors"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              改负责人
+                            </button>
+                            <button
+                              onClick={() => setBatchAction('status')}
+                              className="flex items-center gap-1 px-2 py-1 text-xs text-navy-700 bg-navy-50 rounded hover:bg-navy-100 transition-colors"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              改状态
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={handleSelectAll}
+                          className="flex items-center gap-1.5 text-xs text-navy-700 hover:text-navy-900 transition-colors"
+                        >
+                          {selectedTodoIds.length === pendingTodos.length ? (
+                            <CheckSquare className="w-3.5 h-3.5 fill-brand-gold/10 text-brand-gold" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5" />
+                          )}
+                          {selectedTodoIds.length === pendingTodos.length ? '取消全选' : '全选'}
+                        </button>
+                      </>
                     )}
-                    {selectedTodoIds.length === pendingTodos.length ? '取消全选' : '全选导出'}
-                  </button>
+                    {selectedTodoIds.length === 0 && pendingTodos.length > 0 && (
+                      <span className="text-xs text-slate-400">
+                        勾选待办后可批量操作
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               {pendingTodos.length > 0 && (
                 <p className="text-xs text-slate-400 mt-1">
-                  勾选需要纳入纪要的待办事项，未勾选的事项不会出现在导出的纪要中
+                  勾选需要纳入纪要的待办事项，可批量修改负责人和状态
                 </p>
+              )}
+              {selectedTodoIds.length > 0 && (
+                <div className="mt-2 text-xs text-brand-gold font-medium bg-brand-gold/5 px-3 py-2 rounded-lg">
+                  已选择 {selectedTodoIds.length} 项待办 · 批量修改将立即同步到所有页面
+                </div>
               )}
             </div>
             <div className="p-4">

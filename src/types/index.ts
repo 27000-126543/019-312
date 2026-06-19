@@ -90,12 +90,19 @@ export interface TodoItem {
 
 export type MeetingStep = 'overview' | 'scenario' | 'annotations';
 
+export interface EventProgress {
+  step: MeetingStep;
+  lastVisitedAt?: string;
+}
+
 export interface MeetingState {
   isActive: boolean;
   selectedEventIds: string[];
   currentEventIndex: number;
   currentStep: MeetingStep;
+  eventProgress: Record<string, EventProgress>;
   discussedEventIds: string[];
+  undiscussedReasons: Record<string, string>;
   startTime?: string;
 }
 

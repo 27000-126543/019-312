@@ -18,11 +18,13 @@ import EventSidebar from '@/components/annotations/EventSidebar';
 import AnnotationBubble from '@/components/annotations/AnnotationBubble';
 import AnnotationInput from '@/components/annotations/AnnotationInput';
 import TodoPanel from '@/components/annotations/TodoPanel';
-import MeetingControlBar from '@/components/meeting/MeetingControlBar';
 import { useAppStore } from '@/store/useAppStore';
 import { getRiskLevelInfo } from '@/utils/formatters';
-import { AnnotationCategory, TodoStatus } from '@/types';
 import { exportMinutes } from '@/utils/exportMinutes';
+import { AnnotationCategory, TodoStatus } from '@/types';
+import MeetingControlBar from '@/components/meeting/MeetingControlBar';
+
+const commonOwners = ['品牌公关部', '法务部', '数字银行部', '属地分行', '内审部', '业务部门', '办公室'];
 
 const iconMap = {
   critical: AlertTriangle,
@@ -43,6 +45,7 @@ export default function AnnotationsPage() {
   const getAnnotationsByEventId = useAppStore((s) => s.getAnnotationsByEventId);
   const getTodosByEventId = useAppStore((s) => s.getTodosByEventId);
   const updateTodoStatus = useAppStore((s) => s.updateTodoStatus);
+  const batchUpdateTodos = useAppStore((s) => s.batchUpdateTodos);
   const meeting = useAppStore((s) => s.meeting);
   const getMeetingEvents = useAppStore((s) => s.getMeetingEvents);
   const getMeetingAnnotations = useAppStore((s) => s.getMeetingAnnotations);
@@ -62,6 +65,7 @@ export default function AnnotationsPage() {
   const [selectedTodoStatus, setSelectedTodoStatus] = useState<TodoStatus | 'all'>('all');
   const [selectedTodoIdsForExport, setSelectedTodoIdsForExport] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('annotations');
+  const [batchAction, setBatchAction] = useState<'none' | 'owner' | 'status'>('none');
 
   const allOwners = useMemo(() => {
     const owners = new Set<string>();
@@ -113,6 +117,18 @@ export default function AnnotationsPage() {
     } else {
       setSelectedTodoIdsForExport(eventTodos.map((t) => t.id));
     }
+  };
+
+  const handleBatchOwnerChange = (owner: string) => {
+    if (selectedTodoIdsForExport.length === 0) return;
+    batchUpdateTodos(selectedTodoIdsForExport, { owner, ownerRole: owner });
+    setBatchAction('none');
+  };
+
+  const handleBatchStatusChange = (status: TodoStatus) => {
+    if (selectedTodoIdsForExport.length === 0) return;
+    batchUpdateTodos(selectedTodoIdsForExport, { status });
+    setBatchAction('none');
   };
 
   const annotationCounts = useMemo(() => {
@@ -341,24 +357,80 @@ export default function AnnotationsPage() {
                           <span className="text-xs text-slate-500 font-medium">待办筛选</span>
                         </div>
                         {eventTodos.length > 0 && (
-                          <button
-                            onClick={handleSelectAllTodos}
-                            className="flex items-center gap-1.5 text-xs text-navy-700 hover:text-navy-900 transition-colors"
-                          >
-                            {selectedTodoIdsForExport.length === eventTodos.length ? (
-                              <CheckSquare className="w-3.5 h-3.5 fill-brand-gold/10 text-brand-gold" />
-                            ) : (
-                              <Square className="w-3.5 h-3.5" />
-                            )}
-                            {selectedTodoIdsForExport.length === eventTodos.length ? '取消全选' : '全选'}
+                          <div className="flex items-center gap-2">
                             {selectedTodoIdsForExport.length > 0 && (
-                              <span className="text-brand-gold font-medium">
-                                ({selectedTodoIdsForExport.length}项已选)
-                              </span>
+                              <>
+                                {batchAction === 'owner' ? (
+                                  <select
+                                    className="text-xs px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-gold"
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                      if (e.target.value) handleBatchOwnerChange(e.target.value);
+                                      else setBatchAction('none');
+                                    }}
+                                    autoFocus
+                                  >
+                                    <option value="">选择新负责人...</option>
+                                    {commonOwners.map((owner) => (
+                                      <option key={owner} value={owner}>
+                                        {owner}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : batchAction === 'status' ? (
+                                  <select
+                                    className="text-xs px-2 py-1 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-gold"
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                      if (e.target.value) handleBatchStatusChange(e.target.value as TodoStatus);
+                                      else setBatchAction('none');
+                                    }}
+                                    autoFocus
+                                  >
+                                    <option value="">选择新状态...</option>
+                                    <option value="pending">待处理</option>
+                                    <option value="in_progress">处理中</option>
+                                    <option value="completed">已完成</option>
+                                  </select>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => setBatchAction('owner')}
+                                      className="flex items-center gap-1 px-2 py-1 text-xs text-navy-700 bg-navy-50 rounded hover:bg-navy-100 transition-colors"
+                                    >
+                                      <Users className="w-3.5 h-3.5" />
+                                      改负责人
+                                    </button>
+                                    <button
+                                      onClick={() => setBatchAction('status')}
+                                      className="flex items-center gap-1 px-2 py-1 text-xs text-navy-700 bg-navy-50 rounded hover:bg-navy-100 transition-colors"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      改状态
+                                    </button>
+                                  </>
+                                )}
+                              </>
                             )}
-                          </button>
+                            <button
+                              onClick={handleSelectAllTodos}
+                              className="flex items-center gap-1.5 text-xs text-navy-700 hover:text-navy-900 transition-colors"
+                            >
+                              {selectedTodoIdsForExport.length === eventTodos.length ? (
+                                <CheckSquare className="w-3.5 h-3.5 fill-brand-gold/10 text-brand-gold" />
+                              ) : (
+                                <Square className="w-3.5 h-3.5" />
+                              )}
+                              {selectedTodoIdsForExport.length === eventTodos.length ? '取消全选' : '全选'}
+                            </button>
+                          </div>
                         )}
                       </div>
+                      {selectedTodoIdsForExport.length > 0 && (
+                        <div className="text-xs text-brand-gold font-medium bg-brand-gold/5 px-3 py-2 rounded-lg mb-3">
+                          已选择 {selectedTodoIdsForExport.length} 项待办 · 批量修改将立即同步到议程面板和复盘页
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
