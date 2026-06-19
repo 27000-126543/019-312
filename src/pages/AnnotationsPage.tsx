@@ -252,9 +252,9 @@ export default function AnnotationsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {viewMode === 'todos' && allRelevantTodos.length > 0 && (
+                  {viewMode === 'todos' && eventTodos.length > 0 && (
                     <div className="text-sm text-slate-500 mr-2">
-                      共 {allRelevantTodos.length} 项待办
+                      本事件 {eventTodos.length} 项待办
                     </div>
                   )}
                   <button
@@ -297,7 +297,7 @@ export default function AnnotationsPage() {
                 <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 bg-slate-50/50">
                   <div className="max-w-2xl mx-auto">
                     <TodoPanel
-                      todos={allRelevantTodos}
+                      todos={eventTodos}
                       onStatusChange={handleTodoStatusChange}
                     />
                   </div>

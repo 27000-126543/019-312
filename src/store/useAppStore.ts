@@ -13,6 +13,39 @@ import { mockEvents } from '@/data/mockEvents';
 import { initialAnnotations } from '@/data/mockAnnotations';
 import { getScenarioResult } from '@/data/mockScenarios';
 
+function resolveOwnerFromContent(content: string, annotation: Annotation): { name: string; role: string } {
+  if (content.includes('发布声明') || content.includes('声明')) return { name: '品牌公关部', role: '品牌公关部' };
+  if (content.includes('法务复核') || content.includes('法务')) return { name: '法务部', role: '法务部' };
+  if (content.includes('数字银行') || content.includes('减免')) return { name: '数字银行部', role: '数字银行部' };
+  if (content.includes('分行') || content.includes('支行')) return { name: '属地分行', role: '属地分行' };
+  if (content.includes('内部核实') || content.includes('内审')) return { name: '内审部', role: '内审部' };
+  if (content.includes('整改')) return { name: '业务部门', role: '业务部门' };
+  return { name: annotation.author, role: annotation.role };
+}
+
+function generateInitialTodos(annotations: Annotation[], events: RiskEvent[]): TodoItem[] {
+  const todos: TodoItem[] = [];
+  annotations.forEach((ann) => {
+    if (!ann.category || !['approval', 'review', 'delegation'].includes(ann.category)) return;
+    const event = events.find((e) => e.id === ann.eventId);
+    if (!event) return;
+    const owner = resolveOwnerFromContent(ann.content, ann);
+    todos.push({
+      id: `todo-init-${ann.id}`,
+      eventId: event.id,
+      eventTitle: event.title,
+      content: ann.content,
+      owner: owner.name,
+      ownerRole: owner.role,
+      status: 'pending',
+      createdAt: ann.timestamp,
+      sourceAnnotationId: ann.id,
+      category: ann.category as AnnotationCategory,
+    });
+  });
+  return todos;
+}
+
 interface AppState {
   events: RiskEvent[];
   annotations: Annotation[];
@@ -61,7 +94,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   events: mockEvents,
   annotations: initialAnnotations,
-  todos: [],
+  todos: generateInitialTodos(initialAnnotations, mockEvents),
   selectedEventId: null,
   selectedAction: null,
   currentScenarioResult: null,
@@ -135,15 +168,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const now = new Date();
     const timestamp = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const ownerMap: Record<string, { name: string; role: string }> = {
-      '同意发布声明': { name: '品牌公关部', role: '品牌公关部' },
-      '请法务复核': { name: '法务部', role: '法务部' },
-      '由分行先沟通': { name: '属地分行', role: '属地分行' },
-      '先内部核实': { name: '内审部', role: '内审部' },
-      '同意整改方案': { name: '业务部门', role: '业务部门' },
-    };
-
-    const defaultOwner = ownerMap[annotation.content] || { name: annotation.author, role: annotation.role };
+    const defaultOwner = resolveOwnerFromContent(annotation.content, annotation);
 
     const newTodo: TodoItem = {
       id: `todo-${Date.now()}`,
